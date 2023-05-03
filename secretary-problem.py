@@ -33,6 +33,7 @@ aMax = 1.0
 roundSize = 1000 # number of candidates
 histSize = 999 # number of bins (needs to be fewer than roundSize to avoid empty bins)
 replotSeconds = 1.0 # seconds between plots
+window_width = 10 # for smoothing
 
 def chooseByAlgo(scores,rejectNumber,bestReject):
     i = rejectNumber # first non-rejected candidate; where to start search
@@ -58,8 +59,8 @@ def chooseByAlgo(scores,rejectNumber,bestReject):
     return result
         
 def doRound(roundSize, rejectNumber):
-    scores = list(range(roundSize)) # ordered sequence
-    random.shuffle(scores) # unorder it
+    scores = list(range(roundSize)) # create an ordered sequence
+    random.shuffle(scores) # shuffle it
     bestOfAll = np.max(scores)
     #print("Round")
     #print("scores=",scores)
@@ -101,7 +102,9 @@ def dumpHist(histSize,histCount,histSuccess,histMin,histMax):
         print(i,format(binMin,'.2f'),format(binMax,'.2f'),histCount[i],histSuccess[i],prob)
     print("--- end of histogram ---")
 
-# Main.
+############################################################################################
+# Main
+############################################################################################
 
 roundCounter = 0
 
@@ -119,7 +122,8 @@ print('Number of bins: ', histSize)
 
 plt.ion() # interactive mode, so we can update the graph
 figure, ax = plt.subplots()
-line1, = ax.plot(histX,histProb)
+line1, = ax.plot(histX,histProb, 'b-') # raw histogram
+line2, = ax.plot(histX,histProb, 'r-') # smoothed histogram
 ax.set(ylim=[0,0.5])
 plt.title('Secretary problem: P vs 1/a ('+str(roundCounter)+' rounds)')
 plt.ylabel('P')
@@ -131,7 +135,7 @@ while (True):
     # Pick a random number of candidates to reject.
     rejectNumber = np.random.randint(roundSize) # range 0 to roundSize-1
     a = rejectNumber/roundSize
-    binNum = int((a - aMin) * histSize)
+    binNum = int((a - aMin) * histSize) # this round goes into this bin
 
     # Do a round of interviews and see if it returns the best candidate or not.
     success = doRound(roundSize, rejectNumber)
@@ -150,8 +154,16 @@ while (True):
     if time.time() >= nextPlotTime:
         # print("Round ", roundCounter, ", RejN", rejectNumber, "Result", result)    
         # dumpHist(histSize,histCount,histSuccess,aMin,aMax)
-        line1.set_ydata(histProb)
-        plt.title('Secretary problem: P vs 1/a ('+str(roundCounter)+' rounds)')
+        line1.set_ydata(histProb) # raw histogram
+        # smoothing from https://stackoverflow.com/questions/11352047/finding-moving-average-from-data-points-in-python/34387987#34387987
+        cumsum_vec = np.cumsum(np.insert(histProb, 0, 0)) # padding probably to avoid end effect
+        ma_vec = (cumsum_vec[window_width:] - cumsum_vec[:-window_width]) / window_width # do the averaging
+        padding = [0] * (window_width-1) # more padding to undo truncation caused by averaging
+        line2.set_ydata(np.append(ma_vec,padding)) # plot the smoothed data
+        peakX = np.argmax(ma_vec)/histSize
+        peakY = np.max(ma_vec)
+        plt.title('Secretary problem: P vs 1/a ('+str(roundCounter)+' rounds)\n'+
+                  'p = '+format(peakY,'.3f')+' at 1/a = '+format(peakX,'.3f'))
         figure.canvas.draw()
         figure.canvas.flush_events()
         nextPlotTime = time.time()+replotSeconds
